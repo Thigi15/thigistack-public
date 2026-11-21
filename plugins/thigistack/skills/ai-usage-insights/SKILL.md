@@ -1,6 +1,6 @@
 ---
 name: ai-usage-insights
-compatibility: Best in claude.ai; also works in Claude Code. Needs python3 and a claude.ai data export. The language figures and correction detection know English and Dutch only.
+compatibility: Best in claude.ai; also works in Claude Code. Needs Python 3.9 or newer and a claude.ai data export of your own chats. The language figures and correction detection know English and Dutch only.
 metadata:
   best-in: claude-ai
   works-in: claude-ai claude-code
@@ -47,7 +47,10 @@ the most. Last run's summary travels inside it (step 4), so there is never anyth
 python3 -I <skill>/scripts/read_claude_ai.py <conversations-000.zip> [more parts] --out conversations.jsonl
 ```
 It marks this skill's own chats: an insights run (a chat where an export was uploaded) and a run of the monthly
-reminder. The scripts below keep them out of the analysis; the figures still count the insights runs.
+reminder. The scripts below keep them out of the analysis; the figures still count the insights runs. Exit code 3
+(with "refused:" on stderr) means the export holds more than one account's chats, such as an organization export:
+stop, delete the upload from the working folder, and give the user the Team and Enterprise steps in
+`references/data-export.md`. Never work around it. Any other non-zero code is an ordinary error: fix the command.
 
 ### 3. Choose the period and check there is enough
 ```

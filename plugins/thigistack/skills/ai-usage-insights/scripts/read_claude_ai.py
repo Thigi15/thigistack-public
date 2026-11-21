@@ -21,6 +21,7 @@ so abandoned attempts are not double-counted.
 import argparse
 import io
 import json
+import os
 import re
 import sys
 import zipfile
@@ -158,15 +159,33 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     n = skipped = 0
+    # An organization export (a Team or Enterprise Primary Owner's) holds every member's chats. This skill reads one
+    # person's own chats only, so more than one account means stop and keep nothing. An export without account
+    # fields cannot be told apart; data-export.md tells Primary Owners not to upload theirs.
+    accounts = set()
     with open(args.out, "w", encoding="utf-8") as out:
         for fh in iter_sources(args.paths):
             items = ijson.items(fh, "item", use_float=True) if ijson else json.load(fh)
             for conv in items:
+                account = conv.get("account")
+                account = account.get("uuid") if isinstance(account, dict) else None
+                if account:
+                    accounts.add(account)
+                if len(accounts) > 1:
+                    break
                 if not conv.get("chat_messages"):
                     skipped += 1
                     continue
                 out.write(json.dumps(normalise_conversation(conv), ensure_ascii=False) + "\n")
                 n += 1
+            if len(accounts) > 1:
+                break
+    if len(accounts) > 1:
+        os.remove(args.out)
+        # 3, not 2: argparse uses 2 for a usage error, and SKILL.md acts on this code.
+        print("refused: this export holds the chats of more than one account, such as an organization export. "
+              "This skill reads one person's own chats only. Nothing was kept.", file=sys.stderr)
+        sys.exit(3)
     print(f"wrote {n} conversations to {args.out} (skipped {skipped} empty)", file=sys.stderr)
 
 

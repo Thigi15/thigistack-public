@@ -16,7 +16,8 @@ Send this, in the user's language, and wait for the upload. Keep the structure; 
 > 1. In claude.ai on the web or desktop app (not the phone app), go to **Settings → Privacy → Export data**.
 > 2. Choose **90 days**, every time. (The report covers the last 30 days; the 60 days before them only show which
 >    work comes back every month.)
-> 3. You get an email with download links. Each link works for 24 hours and can stop working once used, so let each download finish.
+> 3. You get an email with a download link. It works for 24 hours and can stop working once used. It opens a list
+>    of separate files to download.
 > 4. Download only `conversations-000.zip` and upload it here.
 >
 > **Don't upload the other files.** `light_metadata` holds your email, phone number and login history, and
@@ -24,8 +25,30 @@ Send this, in the user's language, and wait for the upload. Keep the structure; 
 >
 > Personal chats are counted but never described in the report.
 
-On a Claude Team or Enterprise plan, add: "If you don't see Export data, an owner of your organization
-has to allow members to export their own data first."
+The steps above are for Free, Pro, Max and Ultra. Ask which plan they use when it isn't clear, and on a Team or
+Enterprise plan send this instead of steps 1 and 2, in the user's language:
+
+> **On a Team or Enterprise plan** it depends on your role:
+> - **Member or Owner:** the same **Settings → Privacy → Export data**, but only once an owner has turned on
+>   **Allow members to export their own data** (Organization settings → Data and privacy → Data management). Don't
+>   see Export data? Ask an owner to turn it on. If you're offered a period, choose 90 days; if not, export
+>   everything and I'll use the last 90 days.
+> - **Primary Owner:** you have no personal export, only one for the whole organization, and that file holds
+>   everyone's chats. **Don't upload it:** this report is only about your own chats, and I'll refuse a file with
+>   more than one person's chats in it. For now there is no way to run this report on a Primary Owner's own chats.
+
+Notes for these plans, from Anthropic's help pages
+([members](https://support.claude.com/en/articles/9450526-export-your-claude-data),
+[organizations](https://support.claude.com/en/articles/13346720-export-your-organization-s-data), checked
+21-11-2026):
+- A member's export holds their own chats, without the contents of uploaded files. The help pages don't say whether
+  it offers a period or uses the same file names; if the user's download list looks different, ask them to upload
+  the file with "conversations" in its name, and `read_claude_ai.py` reports what it found.
+- For an organization export the help page says chats deleted by users or by retention settings are left out; it
+  says nothing about deleted chats for a member's own export.
+- `read_claude_ai.py` stops with exit code 3 when the conversations name more than one account, and keeps nothing.
+  That check only works when the export carries account ids; tell a Primary Owner not to upload the organization
+  export rather than rely on it.
 
 ## When the user uploads something else
 
@@ -45,7 +68,7 @@ run recognises the reminder's own chats by it and leaves them out. The rest is i
 > Remind me of my monthly AI usage insights, in a few short lines, and do nothing else: don't read my chats, open
 > files or run any analysis.
 > 1. Request a claude.ai data export of the last 90 days: on the web or desktop app (not the phone app), go to
->    Settings → Privacy → Export data. The email's download links work for 24 hours; download only
+>    Settings → Privacy → Export data. The email's download link works for 24 hours; download only
 >    `conversations-000.zip`.
 > 2. Start a new chat, upload `conversations-000.zip`, and ask for my AI usage insights. Nothing else is needed.
 

@@ -1,7 +1,7 @@
 ---
 name: "new-project"
 description: "Sets up a claude.ai project so it works from the first chat, or brings an existing project onto the same setup. Checks whether a project is the right tool, asks at most 6 questions (goal and when it's done, audience and deliverables, context to bring in, sharing, confidentiality, skills), and delivers short paste-ready project instructions, a project log doc (brief, decisions, open items) that Claude keeps up to date across chats, memory and sharing settings, files to add and a project-index line. For a project with a code repository, links the log to the repo so Claude Code and claude.ai stay aligned. Use when the user wants to start, set up or restructure a project, connect a project to a repo, asks whether something should be a project, or wants project instructions, including Dutch requests like 'nieuw project', 'project opzetten', 'project inrichten', 'projectinstructies', 'moet dit een project worden', 'koppel aan de repo'. Replies in the user's language."
-compatibility: claude.ai only: prepares a claude.ai project. Needs Claude Docs for the project log; chat search helps.
+compatibility: claude.ai only: prepares a claude.ai project. Best with Claude Docs for the project log (without it, a Markdown file in project knowledge); chat search helps.
 metadata:
   best-in: claude-ai
   works-in: claude-ai
