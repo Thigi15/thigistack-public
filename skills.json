@@ -1,0 +1,45 @@
+{
+  "source_commit": "d7f837c439d56c97f9c7180de0e1f175aacb6f19",
+  "skills": [
+    {
+      "name": "bruh",
+      "path": "claude/core/skills/bruh"
+    },
+    {
+      "name": "sharpen",
+      "path": "claude/core/skills/sharpen"
+    },
+    {
+      "name": "mece-tree",
+      "path": "claude/core/skills/mece-tree"
+    },
+    {
+      "name": "first-principles",
+      "path": "claude/core/skills/first-principles"
+    },
+    {
+      "name": "decide",
+      "path": "claude/core/skills/decide"
+    },
+    {
+      "name": "ai-usage-insights",
+      "path": "claude/core/skills/ai-usage-insights"
+    },
+    {
+      "name": "account-setup",
+      "path": "claude/core/skills/account-setup"
+    },
+    {
+      "name": "new-project",
+      "path": "claude/core/skills/new-project"
+    },
+    {
+      "name": "review-project",
+      "path": "claude/core/skills/review-project"
+    },
+    {
+      "name": "memory-cleanup",
+      "path": "claude/core/skills/memory-cleanup"
+    }
+  ]
+}

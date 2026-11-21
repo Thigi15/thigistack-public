@@ -1,0 +1,14 @@
+{
+  "name": "thigistack-public",
+  "description": "Proven, general-purpose skills for claude.ai, Cowork and Claude Code",
+  "owner": {
+    "name": "Thigi15"
+  },
+  "plugins": [
+    {
+      "name": "thigistack",
+      "source": "./plugins/thigistack",
+      "description": "Thinking and writing skills that have proven themselves in daily use"
+    }
+  ]
+}
