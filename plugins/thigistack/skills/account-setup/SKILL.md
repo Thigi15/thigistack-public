@@ -1,7 +1,7 @@
 ---
 name: "account-setup"
 description: "Sets up and maintains how Claude works across a person's claude.ai account. Setup mode drafts a short, paste-ready Instructions block from a brief interview and evidence in past chats (repeated corrections, language switches, re-pasted context, recurring tasks), proposes memory changes and skills to turn on, and gives test prompts. Review mode checks the current Instructions and memory against recent chats and against Anthropic's latest prompting guidance, removes stale or over-cautious rules, and shows changes as a before-and-after. Use when the user wants to set up, improve, clean up or review their Claude, their Instructions or preferences, does a monthly check-in, asks what to change after a new model release, or says Claude keeps doing something they don't want, including Dutch requests like 'stel Claude voor mij in', 'mijn instructies', 'Claude beter afstellen', 'maandelijkse check', 'nieuw model, wat moet ik aanpassen', 'Claude doet steeds'. Replies in the user's language."
-compatibility: claude.ai only: works on the account's Instructions, memory and past chats. Chat search, memory and web search help.
+compatibility: "claude.ai only: works on the account's Instructions, memory and past chats. Chat search, memory and web search help."
 metadata:
   best-in: claude-ai
   works-in: claude-ai

@@ -7,7 +7,7 @@ metadata:
 description: Analyse the user's own AI chat history (a claude.ai data export) and produce a personal usage report - key figures, how they work, where their time goes, friction, what to turn into preferences, project instructions, prompt templates and skills, and which recurring work could run on its own as a loop (scheduled or triggered, checking its own result), with paste-ready text and build briefs. Use when the user asks for insights into their AI or Claude usage, a usage report or "Wrapped", how they could use Claude better, which skills to build or what to automate from their history, or uploads a conversations-000.zip export. Also when they ask in Dutch, for example "mijn AI-gebruik", "inzichten in hoe ik Claude gebruik", "hoe kan ik Claude beter gebruiken", "welke skills moet ik maken" or "een overzicht van mijn gesprekken met Claude" or "wat kan ik automatiseren".
 ---
 
-# AI usage insights (v0.4.3)
+# AI usage insights (v0.5.0)
 
 A monthly self-reflection report on how someone works with AI, built from an export of their own chats.
 It is a personal coach, not a monitor: the user runs it on their own data and the report stays with them.
@@ -126,6 +126,13 @@ compare with `previous.json` if step 4 wrote one, and write `synthesis.json`.
 python3 -I <skill>/scripts/render_report.py --conversations selected.jsonl --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --loops loops.json [--previous previous.json] --out ai-usage-insights-YYYY-MM.html
 ```
 If the renderer lists dropped quotes, refused chats or dropped loops, fix `synthesis.json` and render again.
+Then render the Wrapped, a short tap-through story of the same month:
+```
+python3 -I <skill>/scripts/render_wrapped.py --prepare prepare.json --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --facets facets_checked.jsonl --conversations selected.jsonl [--patterns patterns.json] [--loops loops.json] [--previous previous.json] --out ai-usage-wrapped-YYYY-MM.html
+```
+Every number on it is counted by the scripts. A line starting with `LEFT OFF` means a text from `synthesis.json`
+didn't go on a card (it quotes a chat, cites a chat that isn't a work chat, or a friction title or fix holds a
+number). Fix that text and render again, or accept that the card shows the next item.
 
 ### 15. Monthly reminder
 Find out whether the user has a monthly reminder to run this skill, and offer one if not.
@@ -156,7 +163,9 @@ quote, chat id or chat title. You never write or change it yourself. In Claude, 
 (see "Platform notes").
 
 ### 17. Deliver and reply
-Give the user the report. Then three or four lines: the one quick win that matters most, where the build briefs
+Give the user the report and the Wrapped, both as files; the Wrapped is not published anywhere. Mention the
+Wrapped in one line: a one-minute story of the month, whose last card is the one to show a manager or the team.
+Then three or four lines: the one quick win that matters most, where the build briefs
 are (skills and loops), and to run it again next month with a 90-day export. Don't repeat the report.
 End the reply with the contents of `state_block.md`, pasted unchanged: it is how the next run finds this one.
 
@@ -175,7 +184,7 @@ The skill and the page headings are in English. Write the synthesis texts in the
 (ask at the start if it isn't clear; default to the language most of their chats are in). Paste-ready
 texts for colleagues or tools can follow the language the user works in there.
 
-## Known limitations (v0.4)
+## Known limitations (v0.5)
 
 - claude.ai exports only; ChatGPT, Gemini and Copilot readers are planned.
 - Loops need 3 occurrences. A 30-day export rarely shows monthly work; a 90-day export does.
@@ -193,6 +202,7 @@ texts for colleagues or tools can follow the language the user works in there.
 - The skill can't see whether scheduled tasks are turned on for the user's plan or organisation; the loop brief
   asks them to check.
 - Page headings are English only.
+- Wrapped labels are English only. Its numbers use English separators too (1,234).
 - Chats don't record their project in the export, so project-level advice is inferred.
 - Personal chats are only recognised after the model has read their digest.
 - The "time" chart is a relative estimate from gaps between messages, not real hours.

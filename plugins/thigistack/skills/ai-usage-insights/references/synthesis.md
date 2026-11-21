@@ -2,7 +2,7 @@
 
 Read `aggregate.json`, `prepare.json`, `stats.json` and, if SKILL.md step 4 found last run's block,
 `previous.json`. Write `patterns.json` (step 1), run `loops.py` (SKILL.md step 12), then write `synthesis.json` in the
-schema below. `render_report.py` turns it into the page.
+schema below. `render_report.py` turns it into the page, `render_wrapped.py` into the Wrapped.
 
 ## 1. Merge tasks first, into patterns.json
 
@@ -57,7 +57,7 @@ Limit: at most 4 preferences, 2 project instructions, 3 prompts, 3 skills and 3 
   },
   "how_you_work": ["4-6 one-sentence observations; numbers allowed here"],
   "what_works": [{"title": "", "text": "", "chats": ["8-char ids"]}],
-  "friction": [{"side": "claude|you", "title": "", "text": "", "quotes": [{"chat": "", "quote": ""}], "fix": ""}],
+  "friction": [{"side": "claude|you", "type": "optional: the friction type from aggregate.json → friction", "title": "", "text": "", "quotes": [{"chat": "", "quote": ""}], "fix": ""}],
   "reusable": {
     "preferences": [{"title": "", "text": "paste-ready, 1-2 sentences, written as an instruction to the assistant", "evidence": [{"chat": "", "quote": ""}]}],
     "project_instructions": [{"title": "", "where": "which project or area", "text": "paste-ready", "evidence": []}],
@@ -123,6 +123,10 @@ ago.", and a line when the periods overlap by more than half or the gap is long 
 - Exploration is not failure. Don't count `exploratory` outcomes against the user.
 - Never mention anything from personal or mixed chats, not even the topic. The renderer refuses quotes
   and links from any chat that isn't a work chat, so use only chats from `aggregate.json → quotable_chats`.
+- Friction: give each item the `type` it rests on (a key of `aggregate.json → friction`, such as
+  `context_resupplied`) when there is one. The Wrapped counts that type in the aggregate and shows the count; without
+  a `type` it shows no number. Write no numbers in a friction `title` or `fix` ("6 times"): the Wrapped leaves such a
+  text off, since its counts come from the scripts only.
 - Loops: the numbers on a loop card (how often, which rhythm, which weekday) come from `loops.json`.
   Don't repeat or round them in your own texts; describe what the loop does.
 - The context pack holds work facts only: role, ongoing work, tools, working style. No health, money, family, relationships, politics or religion, even if stated.

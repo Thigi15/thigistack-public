@@ -1,7 +1,7 @@
 ---
 name: "memory-cleanup"
 description: "Cleans up what Claude remembers about the user across their claude.ai account. Reads account memory and the memory of projects that share it, checks it against recent chats, project logs and what the user says, and sorts every line into conflicts, outdated, shouldn't be stored (test input, sensitive details), duplicates and still fine. Shows problems first, each with evidence and a proposed fix, and changes memory only after the user confirms. Use when the user wants to clean up, check or correct Claude's memory, says Claude keeps bringing up outdated or wrong facts, has run test chats, does a monthly check-in, or wants to review what Claude knows about them, including Dutch requests like 'geheugen opschonen', 'klopt mijn geheugen nog', 'wat weet je over mij', 'Claude onthoudt verkeerde dingen', 'vergeet dit'. Replies in the user's language."
-compatibility: claude.ai only: works on the account's memory. Needs memory and chat search.
+compatibility: "claude.ai only: works on the account's memory. Needs memory and chat search."
 metadata:
   best-in: claude-ai
   works-in: claude-ai

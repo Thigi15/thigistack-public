@@ -1,7 +1,7 @@
 ---
 name: "review-project"
 description: "Reviews a claude.ai project along the way. Reads the project log first, then the project's chats, and reports where the project stands against its goal (decisions, progress, open items) and what it covered. Flags stale open items, decisions without a reason, tripwires past their date, contradictions with logged decisions, unlogged decisions and drift. Proposes log updates, instruction changes and an updated index line. Also checks the project's memory against the log, writes a steering-committee update, and pauses or closes a project with lessons learned. Use when the user asks where a project stands, wants a project review, status check, memory check or leadership update, or wants to pause, close or clean up a project, including Dutch requests like 'waar staan we', 'review het project', 'projectstatus', 'stuurgroep-update', 'projectgeheugen opschonen', 'project afronden', 'project afsluiten', 'project pauzeren'. Replies in the user's language."
-compatibility: claude.ai only: reviews a claude.ai project. Best with Claude Docs (without it, the log as a file in project knowledge); needs chat search.
+compatibility: "claude.ai only: reviews a claude.ai project. Best with Claude Docs (without it, the log as a file in project knowledge); needs chat search."
 metadata:
   best-in: claude-ai
   works-in: claude-ai

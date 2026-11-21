@@ -5,6 +5,7 @@ Usage:
     python3 -I stats.py conversations.jsonl --days 30 90 --out stats.json
 
 With --since, one window called "period" is computed (messages from that moment on).
+active_dates lists the local dates with a message from the user; the Wrapped draws one dot per day from them.
 Without it, windows are counted back from the most recent message, plus "all".
 """
 import argparse
@@ -121,6 +122,7 @@ def summarise(convs, tz, detect, start=None):
     return {
         "conversations": len(convs),
         "active_days": len(days),
+        "active_dates": sorted(d.isoformat() for d in days),
         "user_messages": sum(user_turns),
         "user_turns_median": statistics.median(user_turns) if user_turns else 0,
         "user_turns_mean": round(statistics.mean(user_turns), 1) if user_turns else 0,
