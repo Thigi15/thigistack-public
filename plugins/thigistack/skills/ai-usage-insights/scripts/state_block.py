@@ -37,7 +37,7 @@ try:
 except ImportError:  # pragma: no cover
     ijson = None
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 FORMAT = "1"
 HEADER = f"AI-USAGE-INSIGHTS-STATE v{FORMAT}"
 HEADER_LINE = re.compile(r"^AI-USAGE-INSIGHTS-STATE v(\S+)$")

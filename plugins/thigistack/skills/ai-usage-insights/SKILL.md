@@ -7,7 +7,7 @@ metadata:
 description: Analyse the user's own AI chat history (a claude.ai data export) and produce a personal usage report - key figures, how they work, where their time goes, friction, what to turn into preferences, project instructions, prompt templates and skills, and which recurring work could run on its own as a loop (scheduled or triggered, checking its own result), with paste-ready text and build briefs. Use when the user asks for insights into their AI or Claude usage, a usage report or "Wrapped", how they could use Claude better, which skills to build or what to automate from their history, or uploads a conversations-000.zip export. Also when they ask in Dutch, for example "mijn AI-gebruik", "inzichten in hoe ik Claude gebruik", "hoe kan ik Claude beter gebruiken", "welke skills moet ik maken" or "een overzicht van mijn gesprekken met Claude" or "wat kan ik automatiseren".
 ---
 
-# AI usage insights (v0.6.0)
+# AI usage insights (v0.6.1)
 
 A monthly self-reflection report on how someone works with AI, built from an export of their own chats.
 It is a personal coach, not a monitor: the user runs it on their own data and the report stays with them.
@@ -137,9 +137,10 @@ If the renderer lists dropped quotes, refused chats, dropped loops or dropped zo
 and render again.
 Then render the Wrapped, a short tap-through story of the same month:
 ```
-python3 -I <skill>/scripts/render_wrapped.py --prepare prepare.json --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --facets facets_checked.jsonl --conversations selected.jsonl [--patterns patterns.json] [--loops loops.json] [--zoom zoom.json] [--previous previous.json] --out ai-usage-wrapped-YYYY-MM.html
+python3 -I <skill>/scripts/render_wrapped.py --prepare prepare.json --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --facets facets_checked.jsonl --conversations selected.jsonl [--patterns patterns.json] [--loops loops.json] [--zoom zoom.json] [--previous previous.json] --report ai-usage-insights-YYYY-MM.html --out ai-usage-wrapped-YYYY-MM.html
 ```
-Every number on it is counted by the scripts. A line starting with `LEFT OFF` means a text from `synthesis.json`
+`--report` takes the report's file name exactly as written above: the last card names it, so the user knows where
+the rest is. Every number on it is counted by the scripts. A line starting with `LEFT OFF` means a text from `synthesis.json`
 didn't go on a card (it quotes a chat, cites a chat that isn't a work chat, names a work item, or a friction title
 or fix holds a number). Fix that text and render again, or accept that the card shows the next item.
 
@@ -194,7 +195,7 @@ The skill and the page headings are in English. Write the synthesis texts in the
 `synthesis.json → language` (`en` or `nl`): the numbers on both pages follow it, 1,180 or 1.180. Paste-ready
 texts for colleagues or tools can follow the language the user works in there.
 
-## Known limitations (v0.6)
+## Known limitations (v0.6.1)
 
 - claude.ai exports only; ChatGPT, Gemini and Copilot readers are planned.
 - Loops need 3 occurrences. A 30-day export rarely shows monthly work; a 90-day export does.

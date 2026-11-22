@@ -20,7 +20,8 @@ as patterns.json merges task labels.
                     each one served
     made            counts per kind, for whom and what for; the forms the tool calls made; and revision rounds:
                     versions per distinct deliverable, per kind, from chats that made one kind only (a chat that
-                    made two kinds can't say which kind a file belonged to)
+                    made two kinds can't say which kind a file belonged to), leaving out a chat that wrote
+                    more than MAX_DELIVERABLES at once (a build, not rounds of revision)
 
 Every id in this file ("item:<name>", "flow:<chat>", "kind:<kind>|<for>|<purpose>", "case:<pattern>") is what
 synthesis.json's zoomed_out routes point at; render_report.py drops a route whose id isn't here.
@@ -35,10 +36,12 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves the script's folder off the path
 from aggregate import user_minutes  # noqa: E402
-from loops import load_patterns  # noqa: E402
+from loops import load_patterns, pattern_label  # noqa: E402
 from stats import feature_of  # noqa: E402
 
 FLOW_STEPS = 4
+# a chat that writes more files than this at once is a build (an app, a site): no revision figure
+MAX_DELIVERABLES = 10
 REPEAT = 3
 ONE_OFF = "one-off"
 KINDS = ("message", "meeting_material", "document", "plan_or_strategy", "proposal_or_case", "research_or_analysis",
@@ -202,7 +205,7 @@ def main():
     one_off = {"chats": 0, "minutes": 0.0}
     flows, shapes = [], defaultdict(lambda: {"count": 0, "items": set()})
     by_kind = defaultdict(lambda: {"count": 0, "for": Counter(), "purpose": Counter()})
-    forms, revisions, base_chats = Counter(), defaultdict(lambda: [0, 0, 0]), 0
+    forms, revisions, base_chats, left_out = Counter(), defaultdict(lambda: [0, 0, 0]), 0, 0
     for row in rows:
         conv, made = convs[row["id"]], clean_made(row)
         phrase = (row.get("work_item") or "").strip()
@@ -238,7 +241,9 @@ def main():
         for form, (n, _) in made_here.items():
             forms[form] += n
         kinds = {m["kind"] for m in made}
-        if len(kinds) == 1 and made_here:
+        if made_here and sum(n for n, _ in made_here.values()) > MAX_DELIVERABLES:
+            left_out += 1
+        elif len(kinds) == 1 and made_here:
             base_chats += 1
             rev = revisions[kinds.pop()]
             rev[0] += 1
@@ -285,7 +290,8 @@ def main():
         case = cases[pattern_of.get(key, key)]
         case["chats"] |= set(task["chats"]) & quotable
         case["weeks"] |= set(task["weeks"])
-    use_cases = sorted(({"id": f"case:{p}", "pattern": p, "chats": len(c["chats"]),
+    use_cases = sorted(({"id": f"case:{p}", "pattern": p, "label": pattern_label(p, args.patterns, agg.get("tasks", {})),
+                         "chats": len(c["chats"]),
                          "work_items": len({item_by_chat[x] for x in c["chats"] if x in item_by_chat})}
                         for p, c in cases.items() if len(c["chats"]) >= need and len(c["weeks"]) >= 2),
                        key=lambda c: (-c["chats"], c["pattern"]))
@@ -309,6 +315,7 @@ def main():
             "revisions": {k: {"chats": c, "deliverables": d, "versions": v, "per_deliverable": round(v / d, 1)}
                           for k, (c, d, v) in sorted(revisions.items()) if d},
             "revision_base_chats": base_chats,
+            "revision_left_out_chats": left_out,
         },
     }
     with open(args.out, "w", encoding="utf-8") as f:

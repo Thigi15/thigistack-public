@@ -64,7 +64,7 @@ def main():
     total_min = sum(v["minutes"] for v in by_cat.values()) or 1
 
     friction, instructions, evidence = defaultdict(list), defaultdict(list), []
-    tasks = defaultdict(lambda: {"chats": [], "weeks": set(), "categories": Counter()})
+    tasks = defaultdict(lambda: {"chats": [], "weeks": set(), "categories": Counter(), "label": ""})
     handoffs = Counter()
     for f in work:
         for fr in f.get("friction", []):
@@ -75,6 +75,7 @@ def main():
             evidence.append({"chat": f["id"], **ev})
         if f.get("task"):
             t = tasks[f["task"].strip().lower()]
+            t["label"] = t["label"] or " ".join(f["task"].split())
             t["chats"].append(f["id"])
             t["weeks"].add(week(f))
             t["categories"][f["category"]] += 1
@@ -96,7 +97,8 @@ def main():
         "friction": {k: v for k, v in sorted(friction.items(), key=lambda kv: -len(kv[1]))},
         "instructions_by_kind": dict(instructions),
         "evidence": evidence,
-        "tasks": {k: {"chats": v["chats"], "weeks": sorted(v["weeks"]), "category": v["categories"].most_common(1)[0][0]}
+        "tasks": {k: {"chats": v["chats"], "weeks": sorted(v["weeks"]), "category": v["categories"].most_common(1)[0][0],
+                      "label": v["label"]}
                   for k, v in sorted(tasks.items(), key=lambda kv: -len(kv[1]["chats"]))},
         "starts_from_earlier_chats": [f["id"] for f in work if f.get("starts_from_earlier_chats")],
         "handoffs_chats": dict(handoffs.most_common()),

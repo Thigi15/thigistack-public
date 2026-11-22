@@ -16,7 +16,7 @@ Cards, in order, each skipped when it has nothing to show (the opener, the big n
     fix        one friction on the user's side and one on Claude's, with their counts
     next       the first skill to build (else a prompt template or preference), then the first loop
     since      only with previous.json: chats, active days and edited share, now and then
-    summary    the card to share: figures and names only
+    summary    the card to share: figures and names only, and where the full report is
 
 Every number comes from the scripts' files, never from synthesis.json. The texts from synthesis.json (titles, fixes,
 pattern names) are held to the same rules as the report and stricter, since a card travels further:
@@ -37,7 +37,7 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves the script's folder off the path
 from aggregate import LONG_CHAT_TURNS  # noqa: E402
-from loops import load_patterns  # noqa: E402
+from loops import load_patterns, pattern_label  # noqa: E402
 from numfmt import js_locale, lang_of, number, percent  # noqa: E402
 from render_report import LEVEL_LABELS, MADE_LABELS, esc, norm  # noqa: E402
 
@@ -181,6 +181,8 @@ class Facts:
         self.zoom = load(args.zoom) if args.zoom else None
         self.lang = lang_of(self.syn)
         self.pattern_of = load_patterns(args.patterns)
+        self.patterns_path = args.patterns
+        self.report_name = args.report
         quotes = quotes_in(self.syn)
         for line in open(args.facets, encoding="utf-8"):
             if line.strip():
@@ -293,7 +295,8 @@ class Facts:
                 status = "skill suggested"
             else:
                 status = "no skill yet"
-            shown.append((capital(name), len(p["chats"]), status))
+            shown.append((capital(pattern_label(name, self.patterns_path, self.agg.get("tasks", {}))),
+                          len(p["chats"]), status))
         return shown, len(recurring) - len(shown)
 
     # one fix
@@ -541,10 +544,13 @@ def card_made(f):
 
 
 def card_fix(f):
-    main = f.friction_you or f.friction_claude
-    if not main:
+    you, claude = f.friction_you, f.friction_claude
+    if not you and not claude:
         return None
-    other = f.friction_claude if f.friction_you else None
+    count_of = lambda item: (item or {}).get("count") or 0
+    lead_claude = not you or (claude and count_of(claude) > count_of(you))
+    main, other = (claude, you) if lead_claude else (you, claude)
+    other_side = "On your side" if lead_claude else "On Claude's side"
     count = main["count"]
     dots = ""
     if count:
@@ -563,7 +569,7 @@ def card_fix(f):
     if other:
         count_text = f", {fmt(other['count'])} {times(other['count'])}" if other["count"] else ""
         foot = (f'<p class="blk clamp3" style="left:32px;top:630px;width:236px;font-size:13px;line-height:1.45;'
-                f'font-weight:500;color:#FFE1E5">On Claude\'s side: {esc(other["title"])}{count_text}. '
+                f'font-weight:500;color:#FFE1E5">{other_side}: {esc(other["title"])}{count_text}. '
                 f'That fix is in your report too.</p>')
     return ("fix", RED, "light", f"One thing that got in the way: {main['title']}",
             shape(285, 600, 240, BLUE) +
@@ -644,6 +650,11 @@ def tile(label, big, small, bg, dot, ink, fit_marker=""):
             f'<span style="font-size:13px;font-weight:600">{esc(small)}</span></div></div>')
 
 
+def report_line(name):
+    """The pointer to the full report: by file name when the run passed it, a link would break between downloads."""
+    return f"More in your full report: {name}" if name else "More in your full report."
+
+
 def card_summary(f):
     st = f.st
     chats = fmt(st["conversations"])
@@ -681,7 +692,9 @@ def card_summary(f):
             f'<span style="font-size:15px;font-weight:500;color:#4A4A4A">'
             f'{esc(span_text(f.prep["from"], f.prep["to"]))}</span></div>'
             f'<div class="blk tiles" style="top:196px">{"".join(tiles)}</div>{cases}'
-            f'<div class="blk foot" style="top:672px;font-size:12px;font-weight:600">'
+            f'<div class="blk foot" style="top:670px;font-size:12px;line-height:1.3;font-weight:600;'
+            f'flex-direction:column;align-items:flex-start;gap:2px">'
+            f'<span class="ellip" style="max-width:341px">{esc(report_line(f.report_name))}</span>'
             f'<span>Made with AI usage insights</span></div>')
 
 
@@ -858,6 +871,7 @@ def main():
     ap.add_argument("--patterns")
     ap.add_argument("--loops")
     ap.add_argument("--zoom", help="zoom.json from zoom.py")
+    ap.add_argument("--report", help="the report's file name, for the pointer on the last card")
     ap.add_argument("--previous", help="previous.json from state_block.py find, when it found last run's block")
     args = ap.parse_args()
     facts = Facts(args)

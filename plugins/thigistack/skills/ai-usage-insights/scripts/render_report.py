@@ -26,6 +26,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves the script's folder off the path
 from numfmt import lang_of, number, percent  # noqa: E402
+from zoom import MAX_DELIVERABLES  # noqa: E402
 
 # ---------------------------------------------------------------- helpers
 
@@ -92,6 +93,13 @@ ROUTES = {
     "case": {"workflow_skill": "A workflow skill", "loop": "A loop"},
     "kind": {"template_or_skill": "A template or skill"},
 }
+
+
+def shape_line(kind, for_whom, purpose):
+    """'Status updates for your manager, to inform'; the 'for' part goes when the kind already says it."""
+    label, audience = MADE_LABELS.get(kind, kind), FOR_LABELS.get(for_whom, for_whom)
+    middle = "" if label.lower().endswith(audience.lower()) else f" for {audience}"
+    return f"{label}{middle}, {PURPOSE_LABELS.get(purpose, purpose)}"
 KIND_LABELS = {"time": "Time-based", "event": "Event-based", "watch": "Watch", "check": "Check"}
 LEVEL_LABELS = {"report_only": "report only", "draft_only": "drafts only"}
 TRIGGER_LABELS = {
@@ -519,7 +527,7 @@ class Report:
         if z.get("work_items"):
             rows = "".join(
                 f"<tr><td>{esc(i['name'])}</td><td>{n(i['chats'])}</td>"
-                f"<td>{percent(i['share_of_time_pct'], self.lang)}</td><td>{plural(i['span_days'], 'day')}</td>"
+                f"<td>{esc(percent(i['share_of_time_pct'], self.lang))}</td><td>{plural(i['span_days'], 'day')}</td>"
                 f"<td>{n(i['restarts'])}</td><td>{n(i['relays'])}</td><td>{n(i['context_again'])}</td>"
                 f"<td>{esc(', '.join(i['tools']) or '-')}</td>"
                 f"<td>{esc(', '.join(f'{MADE_LABELS.get(k, k)} {n(v)}' for k, v in i['made'].items()) or '-')}</td></tr>"
@@ -538,7 +546,7 @@ class Report:
                 f"<div>{esc(r.get('text', ''))}</div></div>" for r in routes) + "</div>")
         if z.get("use_cases"):
             out.append("<h3>Your top use cases</h3><ul class='points'>" + "".join(
-                f"<li><strong>{esc(c['pattern'])}</strong>: {plural(c['chats'], 'chat')}, across "
+                f"<li><strong>{esc(c.get('label') or c['pattern'])}</strong>: {plural(c['chats'], 'chat')}, across "
                 f"{plural(c['work_items'], 'work item')}</li>" for c in z["use_cases"][:5]) + "</ul>")
         if z.get("flows"):
             out.append(f"<h3>Flows inside one chat</h3><ul class='points'>" + "".join(
@@ -547,9 +555,8 @@ class Report:
                 f"</ul><div class='note'>{plural(len(z['flows']), 'work chat')} ran {FLOW_TEXT}.</div>")
         if z.get("repeated_kinds"):
             out.append("<h3>Made again and again</h3><ul class='points'>" + "".join(
-                f"<li><strong>{esc(MADE_LABELS.get(k['kind'], k['kind']))}</strong> for "
-                f"{esc(FOR_LABELS.get(k['for'], k['for']))}, {esc(PURPOSE_LABELS.get(k['purpose'], k['purpose']))}: "
-                f"{n(k['count'])} times</li>" for k in z["repeated_kinds"]) + "</ul>")
+                f"<li>{esc(shape_line(k['kind'], k['for'], k['purpose']))}: {n(k['count'])} times</li>"
+                for k in z["repeated_kinds"]) + "</ul>")
         out.append("</section>")
         return "".join(out)
 
@@ -573,8 +580,9 @@ class Report:
                "<div class='scroll'><table class='zoom'><thead><tr><th>Kind</th><th>Made</th><th>Mostly for</th>"
                f"<th>Mostly</th></tr></thead><tbody>{rows}</tbody></table></div>"]
         if made.get("forms"):
-            out.append("<div class='note'>Formats: " +
-                       esc(", ".join(f"{k} {n(v)}" for k, v in made["forms"].items())) + ".</div>")
+            out.append("<div class='note'>Files and pages the tools wrote: " +
+                       esc(", ".join(f"{k} {n(v)}" for k, v in made["forms"].items())) +
+                       ". One thing made can be several files, so these counts run higher than the kinds above.</div>")
         if made.get("revisions"):
             out.append("<h3>Revision rounds</h3><ul class='points'>" + "".join(
                 f"<li><strong>{esc(MADE_LABELS.get(k, k))}</strong>: {n(v['per_deliverable'])} "
@@ -582,7 +590,10 @@ class Report:
                 f"deliverable ({plural(v['deliverables'], 'deliverable')} in {plural(v['chats'], 'chat')})</li>"
                 for k, v in made["revisions"].items()) +
                 f"</ul><div class='note'>Counted from the {plural(made['revision_base_chats'], 'chat')} that made one "
-                "kind of thing with a tool, so each file or page belongs to that kind.</div>")
+                "kind of thing with a tool, so each file or page belongs to that kind." +
+                (f" Left out: {plural(made['revision_left_out_chats'], 'chat')} that wrote more than {MAX_DELIVERABLES} files at "
+                 "once, which is a build rather than rounds of revision." if made.get("revision_left_out_chats") else "")
+                + "</div>")
         out.append("</section>")
         return "".join(out)
 
@@ -615,7 +626,8 @@ class Report:
 
         out = []
         a = out.append
-        a(f"<header><p class='eyebrow'>AI usage insights &middot; {esc(syn['period']['source'])}</p>"
+        a(f"<header class='band'><i class='shape s1' aria-hidden='true'></i><i class='shape s2' aria-hidden='true'></i>"
+          f"<p class='eyebrow'>AI usage insights &middot; {esc(syn['period']['source'])}</p>"
           f"<h1>How you worked with AI</h1>"
           f"<p class='sub'>{esc(syn['period']['label'])}: {esc(nice_date(syn['period']['from']))} to {esc(nice_date(syn['period']['to']))}</p></header>")
         a("<nav>" + " ".join(f'<a href="#{i}">{t}</a>' for i, t in [
@@ -697,7 +709,7 @@ class Report:
               f"<ol class='steps'>" + "".join(f"<li>{esc(t)}</li>" for t in s["seen_steps"]) + "</ol>"
               f"<details><summary>Build brief: copy and paste into a new chat</summary>{self.copy_block(self.brief(s), 14)}</details></div>")
         a("</div><h3>Already covered by your skills</h3><ul class='points'>" +
-          "".join(f"<li><strong>{esc(c['pattern'])}</strong> ({c['chats']} chats): your <code>{esc(c['skill'])}</code> skill. "
+          "".join(f"<li><strong>{esc(c['pattern'])}</strong> ({esc(c['chats'])} chats): your <code>{esc(c['skill'])}</code> skill. "
                   f"Next month shows whether it gets used.</li>" for c in r["covered"]) + "</ul>")
         a("<h3>Not worth a skill</h3><ul class='points'>" +
           "".join(f"<li><strong>{esc(n['pattern'])}:</strong> {esc(n['why'])}</li>" for n in r["not_worth_it"]) + "</ul></section>")
@@ -728,23 +740,39 @@ PAGE = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI usage insights</title>
 <style>
-:root{--bg:#fcfcfb;--card:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--line:#e1e0d9;--accent:#2a78d6;--soft:#f3f2ee}
-@media (prefers-color-scheme:dark){:root{--bg:#1a1a19;--card:#222220;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--line:#2c2c2a;--accent:#3987e5;--soft:#262624}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
-main{max-width:960px;margin:0 auto;padding:40px 24px 80px}
-header .eyebrow{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:12px;margin:0}
-h1{font-size:34px;line-height:1.15;margin:6px 0 4px}h2{font-size:22px;margin:0 0 14px}h3{font-size:17px;margin:22px 0 10px}h4{margin:0 0 6px;font-size:15px}
-.sub{color:var(--ink2);margin:0}
+/* the Wrapped's palette and type (render_wrapped.py), used lightly so the two pages read as one set */
+:root{--bg:#f7f5f0;--card:#ffffff;--ink:#111111;--ink2:#4a4a4a;--muted:#86837c;--line:#e4e1d9;--accent:#5b3df5;--soft:#f1efe9;
+ --purple:#5b3df5;--orange:#ff6a4d;--pink:#ff78b9;--teal:#14b8a6;--green:#0e5e4e}
+@media (prefers-color-scheme:dark){:root{--bg:#141414;--card:#1e1e1d;--ink:#f3f1ec;--ink2:#c7c4bb;--muted:#8d8a83;--line:#2e2d2b;--accent:#a99bff;--soft:#242423}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}
+main{max-width:960px;margin:0 auto;padding:32px 24px 80px}
+header.band{position:relative;overflow:hidden;background:var(--purple);color:#fff;border-radius:24px;padding:40px 32px 36px}
+header.band .shape{position:absolute;border-radius:50%;display:block}
+header.band .s1{right:-48px;top:-56px;width:190px;height:190px;background:var(--orange)}
+header.band .s2{right:120px;bottom:-70px;width:120px;height:120px;background:var(--pink)}
+header.band>*:not(.shape){position:relative;max-width:620px}
+header .eyebrow{color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:700;margin:0}
+h1{font-size:40px;line-height:1.05;font-weight:800;letter-spacing:-.035em;margin:10px 0 8px}
+h2{font-size:24px;font-weight:800;letter-spacing:-.025em;margin:0 0 14px}
+h2::before{content:"";display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--orange);margin-right:10px;vertical-align:.12em}
+section:nth-of-type(4n+2) h2::before{background:var(--purple)}section:nth-of-type(4n+3) h2::before{background:var(--teal)}
+section:nth-of-type(4n) h2::before{background:var(--pink)}
+h3{font-size:17px;font-weight:750;margin:22px 0 10px}h4{margin:0 0 6px;font-size:15px;font-weight:750}
+header .sub{color:rgba(255,255,255,.88);margin:0;font-weight:500}
 nav{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 0;margin:24px 0 8px;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:14px;z-index:2}
 nav a{color:var(--ink2);text-decoration:none}nav a:hover{color:var(--accent)}
 section{padding:28px 0;border-bottom:1px solid var(--line)}section:last-child{border-bottom:0}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:12px}
 .card h3{margin-top:0}.card p{margin:0 0 8px}.card p:last-child{margin-bottom:0}
 .glance{display:grid;grid-template-columns:1fr 1fr;gap:12px}.glance .card{margin:0}
 .glance ol{margin:0;padding-left:20px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:22px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
-.tile .num{display:block;font-size:28px;font-weight:650;line-height:1.1}.tile .cap{color:var(--ink2);font-size:13px}
+.tile{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.tile::after{content:"";position:absolute;right:-20px;top:-20px;width:52px;height:52px;border-radius:50%;background:var(--orange)}
+.tile:nth-child(4n+2)::after{background:var(--purple)}.tile:nth-child(4n+3)::after{background:var(--teal)}
+.tile:nth-child(4n)::after{background:var(--pink)}
+.tile .num{position:relative;display:block;font-size:32px;font-weight:900;letter-spacing:-.04em;line-height:1.05;font-variant-numeric:tabular-nums}
+.tile .cap{position:relative;color:var(--ink2);font-size:13px;font-weight:600}
 .charts figure{margin:0 0 26px}figcaption{font-weight:600;margin-bottom:10px}
 svg.chart{width:100%;max-width:700px;height:auto;display:block;overflow:visible}
 .bar{fill:var(--accent)}.hit{fill:transparent}.lab{fill:var(--ink2);font-size:13px}.val{fill:var(--ink2);font-size:12px}
@@ -779,7 +807,8 @@ dl.loopgrid dt{color:var(--muted)}dl.loopgrid dd{margin:0}dl.loopgrid .steps{mar
 @media (max-width:720px){dl.loopgrid{grid-template-columns:1fr}dl.loopgrid dt{margin-top:6px}}
 #tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:4px 8px;border-radius:6px;opacity:0;transition:opacity .1s;z-index:5}
 @media (max-width:720px){.glance,.cols{grid-template-columns:1fr}h1{font-size:28px}}
-@media print{nav,.copybtn,#tip{display:none}details{display:block}}
+@media print{nav,.copybtn,#tip{display:none}details{display:block}header.band,.tile{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media (max-width:720px){header.band{padding:32px 22px 28px}header.band .s2{display:none}}
 </style></head><body><main>
 {{BODY}}
 </main><div id="tip"></div>

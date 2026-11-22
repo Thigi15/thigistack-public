@@ -121,6 +121,17 @@ def load_patterns(path):
     return mapping
 
 
+def pattern_label(pattern, patterns_path, tasks):
+    """How a pattern is shown: as patterns.json names it, else as its task label was first written, else as is.
+    Patterns and labels are grouped in lower case; their capitals ("Dutch", "AI") are kept for display only."""
+    if patterns_path:
+        data = json.load(open(patterns_path, encoding="utf-8"))
+        for name in data.get("patterns", data):
+            if name.strip().lower() == pattern:
+                return " ".join(name.split())
+    return (tasks.get(pattern) or {}).get("label") or pattern
+
+
 def older_history(older_path, labels_path, pattern_of, tz):
     """The older work chats as earlier dates per (source, label), plus what the report's note needs."""
     dates = {}
