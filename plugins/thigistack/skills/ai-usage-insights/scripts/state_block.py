@@ -2,15 +2,16 @@
 
 Usage:
     python3 -I state_block.py write --prepare prepare.json --stats stats.json --aggregate aggregate.json \
-        --synthesis synthesis.json [--loops loops.json] --reminder scheduled|existing|declined|unavailable \
+        --synthesis synthesis.json [--loops loops.json] [--zoom zoom.json] --reminder scheduled|existing|declined|unavailable \
         [--run-date YYYY-MM-DD] --out state_block.md
     python3 -I state_block.py find [conversations-000.zip ...] [--artifact artifact.txt] --prepare prepare.json \
         [--run-date YYYY-MM-DD] --out previous.json
 
 write: builds the block from this run's own outputs. The model pastes it unchanged at the end of its final reply,
 so the next export carries it, and in Claude publishes it to an artifact as a backup. It holds the run date, the
-period, the key figures and the names of what was suggested: no quotes, no chat ids and no chat titles, and at
-most MAX_BYTES. A name that would push it over is cut short.
+period, the key figures and the names of what was suggested: no quotes, no chat ids, no chat titles and no work item
+names, and at most MAX_BYTES. With zoom.json, figures.made_by_kind counts what was made per kind; it is a key inside
+figures, so the format stays v1 (complete() only checks that figures is a dict). A name that would push it over is cut short.
 
 find: looks for blocks in every chat where the user uploaded a conversations export, on every branch, and in the
 artifact's text when one is given. Only a block that parses fully, with a known version and the required keys,
@@ -21,17 +22,22 @@ import argparse
 import html
 import io
 import json
+import os
 import re
+import sys
 import zipfile
 from datetime import date
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves the script's folder off the path
+from zoom import KINDS  # noqa: E402  only the fixed kinds become keys: never free text from the labels
 
 try:
     import ijson  # streams large exports without loading them whole
 except ImportError:  # pragma: no cover
     ijson = None
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 FORMAT = "1"
 HEADER = f"AI-USAGE-INSIGHTS-STATE v{FORMAT}"
 HEADER_LINE = re.compile(r"^AI-USAGE-INSIGHTS-STATE v(\S+)$")
@@ -82,7 +88,15 @@ def write(args):
     ag = json.load(open(args.aggregate, encoding="utf-8"))
     syn = json.load(open(args.synthesis, encoding="utf-8"))
     loops = json.load(open(args.loops, encoding="utf-8")) if args.loops else None
+    zoom = json.load(open(args.zoom, encoding="utf-8")) if args.zoom else None
     names = suggested_names(syn, loops, set(ag.get("quotable_chats", [])))
+    # work item names stay in the report: a suggestion named after one is left out of the block
+    items = [re.compile(r"\b%s\b" % re.escape(i["name"].lower())) for i in (zoom or {}).get("work_items", [])]
+    for kind, found in names.items():
+        kept = [n for n in found if not any(i.search(str(n).lower()) for i in items)]
+        for name in sorted(set(found) - set(kept)):
+            print(f"LEFT OUT of the block (names a work item): {kind} {name!r}")
+        names[kind] = kept
     data = {
         "run": args.run_date,
         "skill_version": VERSION,
@@ -100,6 +114,10 @@ def write(args):
         },
         "reminder": args.reminder,
     }
+    made = {kind: v["count"] for kind, v in ((zoom or {}).get("made") or {}).get("by_kind", {}).items()
+            if kind in KINDS and v.get("count")}
+    if made:
+        data["figures"]["made_by_kind"] = made
     for limit in NAME_LIMITS:
         data["suggested"] = {kind: [cut(n, limit) for n in found] for kind, found in names.items()}
         text = render(data)
@@ -231,6 +249,7 @@ def main():
     for k in ("prepare", "stats", "aggregate", "synthesis", "out"):
         w.add_argument(f"--{k}", required=True)
     w.add_argument("--loops")
+    w.add_argument("--zoom")
     w.add_argument("--reminder", required=True, choices=REMINDER)
     w.add_argument("--run-date", default=date.today().isoformat(), type=lambda s: date.fromisoformat(s).isoformat())
     f = sub.add_parser("find")

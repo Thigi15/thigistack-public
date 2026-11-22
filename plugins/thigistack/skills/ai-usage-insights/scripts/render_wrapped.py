@@ -3,7 +3,8 @@
 Usage:
     python3 -I render_wrapped.py --prepare prepare.json --stats stats.json --aggregate aggregate.json \
         --synthesis synthesis.json --facets facets_checked.jsonl --conversations selected.jsonl \
-        [--patterns patterns.json] [--loops loops.json] [--previous previous.json] --out ai-usage-wrapped-YYYY-MM.html
+        [--patterns patterns.json] [--loops loops.json] [--zoom zoom.json] [--previous previous.json] \
+        --out ai-usage-wrapped-YYYY-MM.html
 
 Cards, in order, each skipped when it has nothing to show (the opener, the big numbers and the summary always show):
     opener     the period
@@ -11,6 +12,7 @@ Cards, in order, each skipped when it has nothing to show (the opener, the big n
     time       the top five shares of time per kind of work
     how        how the chats went (mode), with a fixed headline per dominant mode
     use_cases  the top three recurring patterns, and whether a skill covers them
+    made       what was made: up to five kinds and their counts from zoom.json, never a work item name
     fix        one friction on the user's side and one on Claude's, with their counts
     next       the first skill to build (else a prompt template or preference), then the first loop
     since      only with previous.json: chats, active days and edited share, now and then
@@ -22,6 +24,7 @@ pattern names) are held to the same rules as the report and stricter, since a ca
     - a text that contains a checked quote (facets_checked.jsonl, or any quote in synthesis.json) is left off;
     - a text that equals a chat title, or contains one of three words or more, is left off;
     - a friction title or fix with a digit in it is left off: its count comes from aggregate.json.
+Numbers follow synthesis.json's "language" (numfmt.py), in the markup and in the count-up.
 Everything left off is listed on stdout as LEFT OFF, so the synthesis can be fixed and the page rendered again.
 """
 import argparse
@@ -35,7 +38,8 @@ from datetime import date, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves the script's folder off the path
 from aggregate import LONG_CHAT_TURNS  # noqa: E402
 from loops import load_patterns  # noqa: E402
-from render_report import LEVEL_LABELS, esc, norm  # noqa: E402
+from numfmt import js_locale, lang_of, number, percent  # noqa: E402
+from render_report import LEVEL_LABELS, MADE_LABELS, esc, norm  # noqa: E402
 
 PURPLE, ORANGE, GREEN, PINK, BLUE = "#5B3DF5", "#FF6A4D", "#0E5E4E", "#FF78B9", "#2457E6"
 RED, TEAL, BLACK, CREAM, LILAC = "#D7263D", "#14B8A6", "#121212", "#F5F3EE", "#A99BFF"
@@ -60,17 +64,20 @@ HEADLINE_MODES = ("task_iteration", "directive", "learning", "validation", "feed
 # the dot grids: (columns, dot px, gap px); six rows fit between the label and the divider on card 2
 MAX_DOT_ROWS = 6
 DAY_GRID = (16, 10, 6)
+MAX_MADE_ROWS = 5
+# the report language; render() sets it once per page, so every number on every card follows it
+LANG = "en"
 LONG_GRID = (18, 8, 5)
 
 
 # ---------------------------------------------------------------- small helpers
 
 def fmt(n):
-    return f"{n:,}"
+    return number(n, LANG)
 
 
 def pct(value):
-    return "<1%" if 0 < value < 1 else f"{round(value)}%"
+    return percent(value, LANG)
 
 
 def fit(text, steps):
@@ -100,10 +107,12 @@ def counter(value, suffix=""):
 # ---------------------------------------------------------------- what may go on a card
 
 class Guard:
-    def __init__(self, quotable, quotes, titles):
+    def __init__(self, quotable, quotes, titles, work_items=()):
         self.quotable = quotable
         self.quotes = {q for q in (norm(q) for q in quotes) if len(q.split()) >= 2}
         self.titles = {t for t in (norm(t) for t in titles) if t and t != "untitled chat"}
+        # work item names stay in the report: a card text that names one is left off
+        self.work_items = [re.compile(r"\b%s\b" % re.escape(w)) for w in (norm(w) for w in work_items) if w]
         self.left_off = []
 
     def chats_ok(self, chats, what):
@@ -119,6 +128,9 @@ class Guard:
             return False
         if any(n == t or (len(t.split()) >= 3 and t in n) for t in self.titles):
             self.left_off.append(f"{what} (contains a chat title)")
+            return False
+        if any(w.search(n) for w in self.work_items):
+            self.left_off.append(f"{what} (names a work item; those stay in the report)")
             return False
         if not digits_allowed and re.search(r"\d", text):
             self.left_off.append(f"{what} (has a number in it; counts come from the aggregate)")
@@ -166,6 +178,8 @@ class Facts:
         self.syn = load(args.synthesis)
         self.loops = load(args.loops) if args.loops else None
         self.previous = load(args.previous) if args.previous else None
+        self.zoom = load(args.zoom) if args.zoom else None
+        self.lang = lang_of(self.syn)
         self.pattern_of = load_patterns(args.patterns)
         quotes = quotes_in(self.syn)
         for line in open(args.facets, encoding="utf-8"):
@@ -173,7 +187,8 @@ class Facts:
                 quotes += facet_quotes(json.loads(line))
         titles = [json.loads(line).get("title") or "" for line in open(args.conversations, encoding="utf-8")
                   if line.strip()]
-        self.guard = Guard(set(self.agg.get("quotable_chats", [])), quotes, titles)
+        self.guard = Guard(set(self.agg.get("quotable_chats", [])), quotes, titles,
+                           [i["name"] for i in (self.zoom or {}).get("work_items", [])])
         # synthesis.md: a pattern recurs with 3+ chats in 2+ weeks, 4+ chats in the light tier
         self.need = 4 if self.prep.get("tier") == "light" else 3
 
@@ -500,6 +515,31 @@ def card_use_cases(f):
             f'of job coming back in {f.need} or more chats, in at least two different weeks.</span></div></div>')
 
 
+def card_made(f):
+    """Kinds and counts only: a work item name never goes on a card."""
+    by_kind = ((f.zoom or {}).get("made") or {}).get("by_kind") or {}
+    rows = [(MADE_LABELS.get(kind, MADE_LABELS["other"]), v["count"]) for kind, v in by_kind.items()][:MAX_MADE_ROWS]
+    if not rows:
+        return None
+    total = sum(v["count"] for v in by_kind.values())
+    top = rows[0][1]
+    lines = "".join(
+        f'<div class="row"><div class="rowhead"><span class="ellip" style="font-weight:700">{esc(label)}</span>'
+        f'<span style="font-weight:800">{fmt(count)}</span></div>'
+        f'<div class="track" aria-hidden="true"><div style="width:{max(2, round(341 * count / top))}px"></div>'
+        f'</div></div>' for label, count in rows)
+    return ("made", ORANGE, "light", f"What you made: {fmt(total)} things",
+            shape(300, -60, 180, PINK) +
+            f'<div class="blk" style="left:32px;top:104px;width:341px;display:flex;flex-direction:column;gap:6px">'
+            f'<h2 style="font-size:40px;line-height:1.02;font-weight:800;letter-spacing:-.035em">What you made</h2>'
+            f'<span style="font-size:17px;font-weight:600"><span class="mid" style="display:inline">'
+            f'{counter(total)}</span> things to take away</span></div>'
+            f'<div class="blk" style="left:32px;top:262px;width:341px;display:flex;flex-direction:column;gap:18px">'
+            f'{lines}</div>'
+            f'<p class="blk" style="left:32px;top:640px;width:341px;font-size:12px;line-height:1.4;font-weight:600">'
+            f'By kind of work, not by format. Which pieces of work they were for is in your report.</p>')
+
+
 def card_fix(f):
     main = f.friction_you or f.friction_claude
     if not main:
@@ -738,7 +778,7 @@ JS = """
   function countUp(card) {
     card.querySelectorAll('[data-count]').forEach(function (el) {
       var to = Number(el.getAttribute('data-count')), suffix = el.getAttribute('data-suffix') || '';
-      var put = function (v) { el.textContent = v.toLocaleString('en-US') + suffix; };
+      var put = function (v) { el.textContent = v.toLocaleString(deck.getAttribute('data-locale')) + suffix; };
       if (reduce || !to) { put(to); return; }
       var t0 = null;
       function step(t) {
@@ -787,7 +827,10 @@ JS = """
 
 
 def render(f):
-    builders = [card_numbers, card_time, card_how, card_use_cases, card_fix, card_next, card_since, card_summary]
+    global LANG
+    LANG = f.lang
+    builders = [card_numbers, card_time, card_how, card_use_cases, card_made, card_fix, card_next, card_since,
+                card_summary]
     middle = [card for card in (b(f) for b in builders) if card]
     cards = [card_opener(f, len(middle) + 1)] + middle
     month = date.fromisoformat(f.prep["to"]).strftime("%b %Y")
@@ -800,7 +843,7 @@ def render(f):
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
             f'<title>AI Wrapped, {esc(month)}</title><style>{CSS}</style></head><body>'
-            f'<main id="deck" data-ink="light" aria-live="polite">'
+            f'<main id="deck" data-ink="light" data-locale="{js_locale(f.lang)}" aria-live="polite">'
             f'<div class="bar" aria-hidden="true">{bar}</div>{sections}'
             f'<button class="tap prev" type="button" aria-label="Previous card"></button>'
             f'<button class="tap next" type="button" aria-label="Next card"></button>'
@@ -814,6 +857,7 @@ def main():
         ap.add_argument(f"--{k}", required=True)
     ap.add_argument("--patterns")
     ap.add_argument("--loops")
+    ap.add_argument("--zoom", help="zoom.json from zoom.py")
     ap.add_argument("--previous", help="previous.json from state_block.py find, when it found last run's block")
     args = ap.parse_args()
     facts = Facts(args)

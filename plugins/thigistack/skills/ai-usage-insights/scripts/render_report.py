@@ -2,8 +2,8 @@
 
 Usage:
     python3 -I render_report.py --conversations conversations.jsonl --stats stats.json \
-        --aggregate aggregate.json --synthesis synthesis.json [--loops loops.json] [--previous previous.json] \
-        --out report.html
+        --aggregate aggregate.json --synthesis synthesis.json [--loops loops.json] [--zoom zoom.json] \
+        [--previous previous.json] --out report.html
 
 stats.json, aggregate.json and loops.json come from the scripts; synthesis.json is the
 written part (texts, recommendations, skill seeds, loop cards). Every quote in
@@ -12,12 +12,20 @@ quote that can't be found is dropped and reported. Quotes and chat links are onl
 shown for work chats (aggregate.json's quotable_chats); any other chat is refused,
 even when the quote is real. A loop card is only shown when loops.json has its
 candidate (3+ occurrences), at most 3, and always starting report-only or as drafts.
+"Zoomed out" and "What you made" come from zoom.json; a zoomed-out route in synthesis.json is only shown when its
+ref is an id in zoom.json and its route fits that kind of id. Work item names appear here and nowhere else.
+Numbers follow synthesis.json's "language" (numfmt.py).
 """
 import argparse
 import html
 import json
+import os
 import re
+import sys
 from datetime import date
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves the script's folder off the path
+from numfmt import lang_of, number, percent  # noqa: E402
 
 # ---------------------------------------------------------------- helpers
 
@@ -61,6 +69,29 @@ WALKTHROUGH = [
     "Test: run the draft on the example requests below and compare the result with what I actually needed.",
 ]
 MAX_LOOPS = 3
+FLOW_TEXT = "a flow of 4 or more steps"
+# what was made, by kind (references/facets.md "made"); plural, as a heading over a count
+MADE_LABELS = {
+    "message": "Messages", "meeting_material": "Meeting material", "document": "Documents",
+    "plan_or_strategy": "Plans and strategies", "proposal_or_case": "Proposals and cases",
+    "research_or_analysis": "Research and analyses", "data_or_model": "Data and models",
+    "design_or_visual": "Designs and visuals", "product_spec": "Product specs", "code_or_automation": "Code and automation",
+    "prompt_for_ai": "Prompts for another AI", "learning_material": "Learning material", "status_update": "Status updates",
+    "template_or_checklist": "Templates and checklists", "edit_or_translation": "Edits and translations",
+    "other": "Other",
+}
+FOR_LABELS = {"self": "yourself", "manager": "your manager", "team_or_colleagues": "your team or colleagues",
+              "client_or_partner": "a client or partner", "external_other": "someone outside",
+              "another_ai": "another AI", "other": "someone else"}
+PURPOSE_LABELS = {"decide": "to decide", "inform": "to inform", "request": "to ask for something", "plan": "to plan",
+                  "build": "to build", "reference": "to keep for reference", "other": "for something else"}
+# synthesis.md "Zoomed out": which route fits which kind of zoom.json id
+ROUTES = {
+    "item": {"project_log": "A project with a log", "move_step": "Move the step to the tool where the work happens"},
+    "flow": {"chain_skill": "A chain skill"},
+    "case": {"workflow_skill": "A workflow skill", "loop": "A loop"},
+    "kind": {"template_or_skill": "A template or skill"},
+}
 KIND_LABELS = {"time": "Time-based", "event": "Event-based", "watch": "Watch", "check": "Check"}
 LEVEL_LABELS = {"report_only": "report only", "draft_only": "drafts only"}
 TRIGGER_LABELS = {
@@ -112,6 +143,8 @@ class Report:
         self.syn = json.load(open(args.synthesis, encoding="utf-8"))
         self.loops = json.load(open(args.loops, encoding="utf-8")) if getattr(args, "loops", None) else None
         self.previous = json.load(open(args.previous, encoding="utf-8")) if getattr(args, "previous", None) else None
+        self.zoom = json.load(open(args.zoom, encoding="utf-8")) if getattr(args, "zoom", None) else None
+        self.lang = lang_of(self.syn)
         # only work chats may be quoted or linked; older aggregates list them as titles
         self.quotable = set(self.agg.get("quotable_chats", self.agg.get("titles", {})))
         self.full_id, self.user_text, self.title = {}, {}, {}
@@ -120,7 +153,7 @@ class Report:
             self.full_id[c["id"][:8]] = c["id"]
             self.title[c["id"][:8]] = c["title"] or "Untitled chat"
             self.user_text[c["id"][:8]] = norm(" \n ".join(m["text"] for m in c["messages"] if m["role"] == "user"))
-        self.dropped, self.refused, self.loop_notes = [], [], []
+        self.dropped, self.refused, self.loop_notes, self.zoom_notes = [], [], [], []
 
     def chat_ok(self, chat, what="link"):
         if chat in self.quotable:
@@ -165,14 +198,14 @@ class Report:
             r = min(4, w / 2)
             path = (f"M{lw},{y} h{w - r:.1f} a{r},{r} 0 0 1 {r},{r} v{bh - 2 * r} "
                     f"a{r},{r} 0 0 1 {-r},{r} h{-(w - r):.1f} z")
-            tip = f"{label}: {v:g}{unit}"
+            tip = f"{label}: {number(v, self.lang)}{unit}"
             parts.append(f'<text class="lab" x="{lw - 10}" y="{y + bh - 4}" text-anchor="end">{esc(label)}</text>')
             parts.append(f'<rect class="hit" x="0" y="{y - 3}" width="{lw + bw + 60}" height="{bh + 6}" data-tip="{esc(tip)}"/>')
             parts.append(f'<path class="bar" d="{path}" data-tip="{esc(tip)}"/>')
-            shown = f"<1{unit}" if 0 < v < 1 else f"{v:g}{unit}"
+            shown = f"<1{unit}" if 0 < v < 1 else f"{number(v, self.lang)}{unit}"
             parts.append(f'<text class="val" x="{lw + w + 6:.1f}" y="{y + bh - 4}">{esc(shown)}</text>')
         parts.append("</svg>")
-        table = "".join(f"<tr><td>{esc(l)}</td><td>{v:g}{unit}</td></tr>" for l, v in rows)
+        table = "".join(f"<tr><td>{esc(l)}</td><td>{number(v, self.lang)}{unit}</td></tr>" for l, v in rows)
         return ("".join(parts) + f'<details class="tv"><summary>Show as table</summary>'
                 f"<table><tbody>{table}</tbody></table></details>")
 
@@ -185,12 +218,12 @@ class Report:
         for frac in (0.5, 1.0):
             gy = top + ch - ch * frac
             parts.append(f'<line class="grid" x1="0" x2="{w}" y1="{gy}" y2="{gy}"/>')
-            parts.append(f'<text class="axis" x="{w + 6}" y="{gy + 4}">{round(vmax * frac)}</text>')
+            parts.append(f'<text class="axis" x="{w + 6}" y="{gy + 4}">{number(round(vmax * frac), self.lang)}</text>')
         parts.append(f'<line class="base" x1="0" x2="{w}" y1="{top + ch}" y2="{top + ch}"/>')
         for i, v in enumerate(values):
             x = i * (cw + gap)
             hgt = ch * v / vmax
-            tip = f"{labels[i]}: {v}{unit}"
+            tip = f"{labels[i]}: {number(v, self.lang)}{unit}"
             if hgt > 0:
                 r = min(4, hgt / 2, cw / 2)
                 y = top + ch - hgt
@@ -201,7 +234,8 @@ class Report:
             if i % 3 == 0:
                 parts.append(f'<text class="axis" x="{x + cw / 2}" y="{top + ch + 16}" text-anchor="middle">{esc(labels[i])}</text>')
         parts.append("</svg>")
-        table = "".join(f"<tr><td>{esc(l)}</td><td>{v}{unit}</td></tr>" for l, v in zip(labels, values))
+        table = "".join(f"<tr><td>{esc(l)}</td><td>{number(v, self.lang)}{unit}</td></tr>"
+                        for l, v in zip(labels, values))
         return ("".join(parts) + f'<details class="tv"><summary>Show as table</summary>'
                 f"<table><tbody>{table}</tbody></table></details>")
 
@@ -431,6 +465,127 @@ class Report:
         out.append("</section>")
         return "".join(out)
 
+    # ------------------------------------------------------------ zoomed out and what you made
+
+    def valid_routes(self):
+        """synthesis.json zoomed_out entries whose ref is in zoom.json and whose route fits that kind of ref."""
+        z = self.zoom or {}
+        known = {e["id"]: e for key in ("work_items", "flows", "use_cases", "repeated_kinds") for e in z.get(key, [])}
+        valid = []
+        for route in self.syn.get("zoomed_out") or []:
+            ref = route.get("ref") or ""
+            kind = ref.split(":", 1)[0]
+            if ref not in known:
+                self.zoom_notes.append(("DROPPED (zoomed-out route without an entry in zoom.json)", route.get("title")))
+            elif kind == "case" and known[ref]["work_items"] < 2:
+                self.zoom_notes.append(("DROPPED (zoomed-out route: a workflow needs 2 or more work items)",
+                                        route.get("title")))
+            elif route.get("route") not in ROUTES.get(kind, {}):
+                self.zoom_notes.append((f"DROPPED (zoomed-out route {route.get('route')!r} doesn't fit {kind!r})",
+                                        route.get("title")))
+            elif not (route.get("title") or "").strip():
+                self.zoom_notes.append(("DROPPED (zoomed-out route without a title)", ref))
+            elif re.search(r"\d", f"{route.get('title')} {route.get('text') or ''}"):
+                self.zoom_notes.append(("DROPPED (zoomed-out route with a number in its text)", route.get("title")))
+            else:
+                valid.append({**route, "label": ROUTES[kind][route["route"]],
+                              "counts": self.route_counts(kind, known[ref])})
+        return valid
+
+    def route_counts(self, kind, entry):
+        """The counts a route card shows, from its zoom.json entry: the synthesis writes no numbers."""
+        n = lambda v, word: f"{number(v, self.lang)} {word}{'' if v == 1 else 's'}"
+        if kind == "item":
+            return " · ".join([n(entry["chats"], "chat"), n(entry["restarts"], "restart"), n(entry["relays"], "relay")])
+        if kind == "flow":
+            return n(len(entry["steps"]), "step")
+        if kind == "case":
+            return f"{n(entry['chats'], 'chat')} · {n(entry['work_items'], 'work item')}"
+        return f"made {n(entry['count'], 'time')}"
+
+    def zoom_section(self):
+        head = "<section id='zoom'><h2>Zoomed out</h2>"
+        n = lambda v: number(v, self.lang)
+        plural = lambda v, word: f"{n(v)} {word}{'' if v == 1 else 's'}"
+        if self.zoom is None:
+            return head + "<p class='note'>Work items were not checked in this run.</p></section>"
+        z = self.zoom
+        if not z.get("work_items") and not z.get("flows"):
+            return head + ("<p>No work items were labelled this time, so there is no larger picture to show.</p>"
+                           "</section>")
+        out = [head, "<p class='lead'>The pieces of work your period went to, and where work spans several chats or "
+                     "moves between tools. Time is the same relative estimate as in Key figures. A restart picks up "
+                     "earlier chats; a relay starts from, or goes to, another tool.</p>"]
+        if z.get("work_items"):
+            rows = "".join(
+                f"<tr><td>{esc(i['name'])}</td><td>{n(i['chats'])}</td>"
+                f"<td>{percent(i['share_of_time_pct'], self.lang)}</td><td>{plural(i['span_days'], 'day')}</td>"
+                f"<td>{n(i['restarts'])}</td><td>{n(i['relays'])}</td><td>{n(i['context_again'])}</td>"
+                f"<td>{esc(', '.join(i['tools']) or '-')}</td>"
+                f"<td>{esc(', '.join(f'{MADE_LABELS.get(k, k)} {n(v)}' for k, v in i['made'].items()) or '-')}</td></tr>"
+                for i in z["work_items"])
+            out.append("<div class='scroll'><table class='zoom'><thead><tr><th>Work item</th><th>Chats</th><th>Time</th>"
+                       "<th>Span</th><th>Restarts</th><th>Relays</th><th>Explained again</th><th>Tools</th>"
+                       f"<th>Made</th></tr></thead><tbody>{rows}</tbody></table></div>")
+            if z.get("one_off_chats"):
+                out.append(f"<div class='note'>Plus {plural(z['one_off_chats'], 'one-off chat')} that served no "
+                           "larger piece of work.</div>")
+        routes = self.valid_routes()
+        if routes:
+            out.append("<h3>What to do with it</h3><div class='grid3'>" + "".join(
+                f"<div class='card'><h4>{esc(r['title'])}</h4><div class='note'>{esc(r['label'])} &middot; "
+                f"{esc(r['counts'])}</div>"
+                f"<div>{esc(r.get('text', ''))}</div></div>" for r in routes) + "</div>")
+        if z.get("use_cases"):
+            out.append("<h3>Your top use cases</h3><ul class='points'>" + "".join(
+                f"<li><strong>{esc(c['pattern'])}</strong>: {plural(c['chats'], 'chat')}, across "
+                f"{plural(c['work_items'], 'work item')}</li>" for c in z["use_cases"][:5]) + "</ul>")
+        if z.get("flows"):
+            out.append(f"<h3>Flows inside one chat</h3><ul class='points'>" + "".join(
+                f"<li><strong>{esc(f['task'] or f['work_item'] or 'A chat')}</strong>: "
+                f"{esc(' → '.join(f['steps']))}</li>" for f in z["flows"][:5]) +
+                f"</ul><div class='note'>{plural(len(z['flows']), 'work chat')} ran {FLOW_TEXT}.</div>")
+        if z.get("repeated_kinds"):
+            out.append("<h3>Made again and again</h3><ul class='points'>" + "".join(
+                f"<li><strong>{esc(MADE_LABELS.get(k['kind'], k['kind']))}</strong> for "
+                f"{esc(FOR_LABELS.get(k['for'], k['for']))}, {esc(PURPOSE_LABELS.get(k['purpose'], k['purpose']))}: "
+                f"{n(k['count'])} times</li>" for k in z["repeated_kinds"]) + "</ul>")
+        out.append("</section>")
+        return "".join(out)
+
+    def made_section(self):
+        head = "<section id='made'><h2>What you made</h2>"
+        n = lambda v: number(v, self.lang)
+        plural = lambda v, word: f"{n(v)} {word}{'' if v == 1 else 's'}"
+        if self.zoom is None:
+            return head + "<p class='note'>What you made was not checked in this run.</p></section>"
+        made = self.zoom.get("made") or {}
+        if not made.get("by_kind"):
+            return head + ("<p>Nothing made was labelled this time: these chats were mostly questions and answers.</p>"
+                           "</section>")
+        top = lambda counts, labels: labels.get(next(iter(counts)), "") if counts else ""
+        rows = "".join(
+            f"<tr><td>{esc(MADE_LABELS.get(k, k))}</td><td>{n(v['count'])}</td>"
+            f"<td>{esc(top(v['for'], FOR_LABELS))}</td><td>{esc(top(v['purpose'], PURPOSE_LABELS))}</td></tr>"
+            for k, v in made["by_kind"].items())
+        out = [head, f"<p class='lead'>{plural(made['chats_with_made'], 'work chat')} made something to take away. "
+                     "The kinds are broad on purpose: what a thing is for, not whether it was a deck or a sheet.</p>",
+               "<div class='scroll'><table class='zoom'><thead><tr><th>Kind</th><th>Made</th><th>Mostly for</th>"
+               f"<th>Mostly</th></tr></thead><tbody>{rows}</tbody></table></div>"]
+        if made.get("forms"):
+            out.append("<div class='note'>Formats: " +
+                       esc(", ".join(f"{k} {n(v)}" for k, v in made["forms"].items())) + ".</div>")
+        if made.get("revisions"):
+            out.append("<h3>Revision rounds</h3><ul class='points'>" + "".join(
+                f"<li><strong>{esc(MADE_LABELS.get(k, k))}</strong>: {n(v['per_deliverable'])} "
+                f"version{'' if v['per_deliverable'] == 1 else 's'} per "
+                f"deliverable ({plural(v['deliverables'], 'deliverable')} in {plural(v['chats'], 'chat')})</li>"
+                for k, v in made["revisions"].items()) +
+                f"</ul><div class='note'>Counted from the {plural(made['revision_base_chats'], 'chat')} that made one "
+                "kind of thing with a tool, so each file or page belongs to that kind.</div>")
+        out.append("</section>")
+        return "".join(out)
+
     # ------------------------------------------------------------ page
 
     def render(self):
@@ -438,17 +593,18 @@ class Report:
         g = syn["at_a_glance"]
         langs = st.get("language_user_msgs", {})
         long_work = ag.get("long_chats_over_55", sum(1 for t, _ in ag["longest_chats_user_turns"] if t > 55))
+        lang = self.lang
         tiles = [
-            (str(st["conversations"]), "chats"),
-            (f'{st["active_days"]}', "active days"),
-            (str(ag["work_chats_analysed"]), "work chats analysed"),
-            (f'{round(st["rewound_convs_pct"])}%', "of chats had an edited message"),
-            (str(long_work), "work chats past 55 turns"),
+            (number(st["conversations"], lang), "chats"),
+            (number(st["active_days"], lang), "active days"),
+            (number(ag["work_chats_analysed"], lang), "work chats analysed"),
+            (percent(st["rewound_convs_pct"], lang), "of chats had an edited message"),
+            (number(long_work, lang), "work chats past 55 turns"),
         ]
         if sum(langs.values()):
             top, cnt = max(langs.items(), key=lambda kv: kv[1])
             name = {"en": "English", "nl": "Dutch"}.get(top, top)
-            tiles.append((f"{round(100 * cnt / sum(langs.values()))}%", f"of your messages in {name}"))
+            tiles.append((percent(100 * cnt / sum(langs.values()), lang), f"of your messages in {name}"))
         cats = {}
         for k, v in ag["categories"].items():
             lab = CATEGORY_LABELS.get(k, k)
@@ -464,7 +620,8 @@ class Report:
           f"<p class='sub'>{esc(syn['period']['label'])}: {esc(nice_date(syn['period']['from']))} to {esc(nice_date(syn['period']['to']))}</p></header>")
         a("<nav>" + " ".join(f'<a href="#{i}">{t}</a>' for i, t in [
             ("glance", "At a glance"), ("figures", "Key figures"), ("work", "How you work"), ("works", "What works"),
-            ("friction", "Friction"), ("reuse", "Make it reusable"), ("loops", "Loops"), ("pack", "Context pack"),
+            ("friction", "Friction"), ("zoom", "Zoomed out"), ("made", "What you made"), ("reuse", "Make it reusable"),
+            ("loops", "Loops"), ("pack", "Context pack"),
             ("share", "Share"),
             ("notes", "Notes")]) + "</nav>")
 
@@ -507,6 +664,9 @@ class Report:
                   f"<p class='fix'><strong>Fix:</strong> {esc(f['fix'])}</p></div>")
             a("</div>")
         a("</div></section>")
+
+        a(self.zoom_section())
+        a(self.made_section())
 
         r = {"preferences": [], "project_instructions": [], "prompts": [], "skills": [], "covered": [],
              "not_worth_it": [], **syn.get("reusable", {})}
@@ -607,6 +767,9 @@ blockquote a{color:var(--ink2);text-decoration:none}blockquote a:hover{color:var
 details summary{cursor:pointer;color:var(--ink2);font-size:14px}
 .steps{padding-left:20px;font-size:14px;color:var(--ink2);margin:6px 0 10px}
 code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:14px}
+.scroll{overflow-x:auto}table.zoom{border-collapse:collapse;font-size:14px;width:100%}
+table.zoom th,table.zoom td{text-align:left;padding:6px 10px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+table.zoom th{color:var(--muted);font-weight:600}
 .loops{display:grid;gap:12px}.loops .card{margin:0}
 .loophead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;margin-bottom:6px}.loophead h4{margin:0 6px 0 0}
 .pill{font-size:12px;color:var(--ink2);border:1px solid var(--line);border-radius:999px;padding:1px 9px}
@@ -644,6 +807,7 @@ def main():
     for k in ("conversations", "stats", "aggregate", "synthesis", "out"):
         ap.add_argument(f"--{k}", required=True)
     ap.add_argument("--loops")
+    ap.add_argument("--zoom", help="zoom.json from zoom.py")
     ap.add_argument("--previous", help="previous.json from state_block.py find, when it found last run's block")
     args = ap.parse_args()
     rep = Report(args)
@@ -654,7 +818,7 @@ def main():
         print("DROPPED (quote not found):", d)
     for d in sorted(set(rep.refused)):
         print("DROPPED (not a work chat):", d)
-    for note, title in rep.loop_notes:
+    for note, title in rep.loop_notes + rep.zoom_notes:
         print(f"{note}: {title}")
 
 

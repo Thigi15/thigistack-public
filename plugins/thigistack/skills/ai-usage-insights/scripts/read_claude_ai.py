@@ -8,8 +8,13 @@ All parts (conversations-000.zip, conversations-001.zip, ...) can be passed at o
 
 Output: one JSON object per conversation, following the common schema:
     {id, source, title, url, created, updated, branched, n_messages_total, insights_run, reminder_run,
-     messages: [{role, ts, text, tools, tool_errors, attachments, pasted_chars,
+     messages: [{role, ts, text, tools, calls, tool_errors, attachments, pasted_chars,
                  files, thinking}]}
+
+calls: per tool call, only what zoom.py needs to tell deliverables and their versions apart: the tool name, its
+action, the file extension, whether it was made from an artifact type, and short hashes of the url or id and of each
+path it wrote to. A tool call's url, id or path itself is never kept: file names can name customers or people.
+(Uploaded attachments keep their names: digest.py shows them to the model, and they never reach the report.)
 
 insights_run: the user uploaded a conversations export in this chat, on any branch: a run of this skill.
 reminder_run: the chat opens with the monthly reminder's fixed first line.
@@ -19,6 +24,7 @@ root. Edited or regenerated branches are counted (branched=True) but dropped,
 so abandoned attempts are not double-counted.
 """
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -93,6 +99,38 @@ def count_rewinds(messages):
     return edits, resends
 
 
+# where a tool call names the thing it writes to: an id (url, id, a doc's container id) and the paths, each hashed
+# on its own. A first publish carries only a path, its later edits only a url; zoom.py pairs them. A doc edit's
+# `ref` names a node inside the doc, not the doc, so it is no key.
+ID_KEYS = ("url", "id", "page_id")
+PATH_KEYS = ("path", "file_path")
+# an action is kept only when it is one word: a shell command in `command` would carry paths and names
+ACTION_WORD = re.compile(r"[a-z][a-z_]{0,23}")
+
+
+def short_hash(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:10] if text else ""
+
+
+def call_of(block):
+    """One tool call as zoom.py reads it; see the module docstring for why the targets are hashed."""
+    params = block.get("input") if isinstance(block.get("input"), dict) else {}
+    action = next((params[k] for k in ("action", "command", "kind") if isinstance(params.get(k), str)), "")
+    action = action if ACTION_WORD.fullmatch(action) else ""
+    target = next((params[k] for k in ID_KEYS if isinstance(params.get(k), str) and params[k]), "")
+    container = params.get("container")
+    if not target and isinstance(container, dict):
+        if isinstance(container.get("id"), str):
+            target = container["id"]
+        elif "create" in container and not action:
+            action = "create"
+    paths = [params.get(k) for k in PATH_KEYS] + list(params.get("filepaths") or [])
+    paths = list(dict.fromkeys(p for p in paths if isinstance(p, str) and p))
+    return {"tool": block.get("name") or "", "action": action, "key": short_hash(target),
+            "paths": [short_hash(p) for p in paths], "exts": [os.path.splitext(p)[1].lower() for p in paths],
+            "typed": bool(params.get("type_url"))}
+
+
 def normalise_message(m):
     blocks = m.get("content") or []
     starts = [b.get("start_timestamp") for b in blocks if b.get("start_timestamp")]
@@ -114,6 +152,7 @@ def normalise_message(m):
         "ts_start": min(starts) if starts else m.get("created_at"),  # assistant created_at is when the answer finished
         "text": "\n".join(t for t in texts if t).strip(),
         "tools": tools,
+        "calls": [call_of(b) for b in blocks if b.get("type") == "tool_use"],
         "tool_errors": errors,
         "attachments": attachments,
         "pasted_chars": pasted,

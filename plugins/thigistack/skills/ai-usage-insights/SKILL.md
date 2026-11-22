@@ -7,7 +7,7 @@ metadata:
 description: Analyse the user's own AI chat history (a claude.ai data export) and produce a personal usage report - key figures, how they work, where their time goes, friction, what to turn into preferences, project instructions, prompt templates and skills, and which recurring work could run on its own as a loop (scheduled or triggered, checking its own result), with paste-ready text and build briefs. Use when the user asks for insights into their AI or Claude usage, a usage report or "Wrapped", how they could use Claude better, which skills to build or what to automate from their history, or uploads a conversations-000.zip export. Also when they ask in Dutch, for example "mijn AI-gebruik", "inzichten in hoe ik Claude gebruik", "hoe kan ik Claude beter gebruiken", "welke skills moet ik maken" or "een overzicht van mijn gesprekken met Claude" or "wat kan ik automatiseren".
 ---
 
-# AI usage insights (v0.5.0)
+# AI usage insights (v0.6.0)
 
 A monthly self-reflection report on how someone works with AI, built from an export of their own chats.
 It is a personal coach, not a monitor: the user runs it on their own data and the report stays with them.
@@ -93,8 +93,9 @@ batches, and don't summarise batches back to the user.
 
 ### 8. Label the older chats for loop history
 Only when `prepare.json → older_chats.in_digest` is above 0. Follow `references/facets.md` section "Older chats":
-read `older.jsonl` once and write `older_labels.jsonl`, a scope for each chat and, for work chats only, a task and a
-watch subject. Nothing else from these chats goes anywhere.
+read `older.jsonl` once and write `older_labels.jsonl`, a scope for each chat and, for work chats only, a task, a
+watch subject and a work item, from the title and first message. Their dates feed the loop history and a work
+item's span; nothing else from these chats goes anywhere.
 
 ### 9. Check every quote
 ```
@@ -107,32 +108,40 @@ Dropped quotes are listed. Fix them only if the finding matters; otherwise let t
 python3 -I <skill>/scripts/aggregate.py selected.jsonl facets_checked.jsonl --out aggregate.json
 ```
 
-### 11. Merge tasks into patterns
-Follow `references/synthesis.md` section 1 and write `patterns.json`.
+### 11. Merge tasks into patterns, and work items
+Follow `references/synthesis.md` section 1 and write `patterns.json` and `items.json`.
 
-### 12. Find loop candidates (no AI)
+### 12. Find loop candidates and zoom out (no AI)
 ```
 python3 -I <skill>/scripts/loops.py selected.jsonl facets_checked.jsonl --prepare prepare.json --aggregate aggregate.json --patterns patterns.json [--older older.jsonl --older-labels older_labels.jsonl] --tz <user's time zone> --out loops.json
 ```
 The older chats' dates make monthly work show up. Pass `--older` and `--older-labels` when you ran step 8.
+Then zoom out: the pieces of work the period went to, flows inside chats, and what was made.
+```
+python3 -I <skill>/scripts/zoom.py selected.jsonl facets_checked.jsonl --aggregate aggregate.json --patterns patterns.json --prepare prepare.json --items items.json [--older older.jsonl --older-labels older_labels.jsonl] --tz <user's time zone> --out zoom.json
+```
+It reads work chats only. The forms and the versions per deliverable come from the tool calls; work item names
+stay in the report.
 
 ### 13. Write the findings
 Follow `references/synthesis.md`: check the user's existing skills, loops and scheduled tasks, route each pattern
-(preference, project instructions, prompt, skill, loop, nothing), decide on loops with `references/loops.md`,
+(preference, project instructions, prompt, skill, loop, nothing), route what `zoom.json` shows (section 3b),
+decide on loops with `references/loops.md`,
 compare with `previous.json` if step 4 wrote one, and write `synthesis.json`.
 
 ### 14. Render
 ```
-python3 -I <skill>/scripts/render_report.py --conversations selected.jsonl --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --loops loops.json [--previous previous.json] --out ai-usage-insights-YYYY-MM.html
+python3 -I <skill>/scripts/render_report.py --conversations selected.jsonl --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --loops loops.json --zoom zoom.json [--previous previous.json] --out ai-usage-insights-YYYY-MM.html
 ```
-If the renderer lists dropped quotes, refused chats or dropped loops, fix `synthesis.json` and render again.
+If the renderer lists dropped quotes, refused chats, dropped loops or dropped zoomed-out routes, fix `synthesis.json`
+and render again.
 Then render the Wrapped, a short tap-through story of the same month:
 ```
-python3 -I <skill>/scripts/render_wrapped.py --prepare prepare.json --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --facets facets_checked.jsonl --conversations selected.jsonl [--patterns patterns.json] [--loops loops.json] [--previous previous.json] --out ai-usage-wrapped-YYYY-MM.html
+python3 -I <skill>/scripts/render_wrapped.py --prepare prepare.json --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --facets facets_checked.jsonl --conversations selected.jsonl [--patterns patterns.json] [--loops loops.json] [--zoom zoom.json] [--previous previous.json] --out ai-usage-wrapped-YYYY-MM.html
 ```
 Every number on it is counted by the scripts. A line starting with `LEFT OFF` means a text from `synthesis.json`
-didn't go on a card (it quotes a chat, cites a chat that isn't a work chat, or a friction title or fix holds a
-number). Fix that text and render again, or accept that the card shows the next item.
+didn't go on a card (it quotes a chat, cites a chat that isn't a work chat, names a work item, or a friction title
+or fix holds a number). Fix that text and render again, or accept that the card shows the next item.
 
 ### 15. Monthly reminder
 Find out whether the user has a monthly reminder to run this skill, and offer one if not.
@@ -156,10 +165,10 @@ Find out whether the user has a monthly reminder to run this skill, and offer on
 
 ### 16. Write the summary for next time
 ```
-python3 -I <skill>/scripts/state_block.py write --prepare prepare.json --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --loops loops.json --reminder <value from step 15> --out state_block.md
+python3 -I <skill>/scripts/state_block.py write --prepare prepare.json --stats stats.json --aggregate aggregate.json --synthesis synthesis.json --loops loops.json --zoom zoom.json --reminder <value from step 15> --out state_block.md
 ```
 It writes a sentence and a fenced block: the period, the key figures and the names of what was suggested, never a
-quote, chat id or chat title. You never write or change it yourself. In Claude, also update the backup artifact
+quote, chat id, chat title or work item name. You never write or change it yourself. In Claude, also update the backup artifact
 (see "Platform notes").
 
 ### 17. Deliver and reply
@@ -181,15 +190,16 @@ End the reply with the contents of `state_block.md`, pasted unchanged: it is how
 ## Language
 
 The skill and the page headings are in English. Write the synthesis texts in the user's language
-(ask at the start if it isn't clear; default to the language most of their chats are in). Paste-ready
+(ask at the start if it isn't clear; default to the language most of their chats are in), and set it as
+`synthesis.json → language` (`en` or `nl`): the numbers on both pages follow it, 1,180 or 1.180. Paste-ready
 texts for colleagues or tools can follow the language the user works in there.
 
-## Known limitations (v0.5)
+## Known limitations (v0.6)
 
 - claude.ai exports only; ChatGPT, Gemini and Copilot readers are planned.
 - Loops need 3 occurrences. A 30-day export rarely shows monthly work; a 90-day export does.
 - The older chats are judged from their title and first message only, so their task labels are rougher than this
-  period's. They feed the loop history and nothing else. At most 300 of them are read, the most recent first, and
+  period's. They feed the loop history and a work item's span, and nothing else. At most 300 of them are read, the most recent first, and
   suspected test runs are left out.
 - The comparison needs last run's summary block. An incognito run, or a deleted run chat, leaves no block in the
   export; in Claude, the artifact still has it.
@@ -202,7 +212,15 @@ texts for colleagues or tools can follow the language the user works in there.
 - The skill can't see whether scheduled tasks are turned on for the user's plan or organisation; the loop brief
   asks them to check.
 - Page headings are English only.
-- Wrapped labels are English only. Its numbers use English separators too (1,234).
+- Wrapped labels are English only. Numbers on both pages follow the report language (English or Dutch).
+- Work items and what was made rest on the labels the model gives; two readers agreed on 94% of work items and 90%
+  of kinds in one test (22-11-2026). Merging work items is the model's call, as merging tasks is.
+- Versions per deliverable are counted conservatively: a first publish carries no url yet, so a chat's deliverables
+  are the most of its distinct urls or ids, its distinct paths, and its calls with neither. Revision rounds come only
+  from chats that made one kind of thing, since a tool call doesn't say which kind it served.
+- Tool names differ per surface and change over time. Only known writers count (Artifact, Claude Docs, files,
+  presented files, drafted messages, visuals, research reports, Notion pages); an unknown tool counts as form "other"
+  only when its call says it writes. The tool names were seen in one real export (22-11-2026); other surfaces are untested.
 - Chats don't record their project in the export, so project-level advice is inferred.
 - Personal chats are only recognised after the model has read their digest.
 - The "time" chart is a relative estimate from gaps between messages, not real hours.

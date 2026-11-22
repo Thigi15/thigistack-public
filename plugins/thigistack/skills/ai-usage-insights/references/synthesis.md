@@ -18,6 +18,16 @@ Only labels that merge need a line; a label on its own stays its own pattern. `o
 (SKILL.md step 8) holds the older chats' task labels: merge those too, so their dates land on the same pattern.
 A pattern counts as **recurring** when it has 3+ chats in 2+ different weeks (light tier: 4+ chats).
 
+Do the same for work items, into `items.json`: look at the `work_item` phrases in `facets_checked.jsonl` (and
+`older_labels.jsonl`), and merge the phrases that turned out to mean the same piece of work, keeping the phrase that
+reads best:
+
+```json
+{"website relaunch": ["website relaunch design", "relaunch kickoff"]}
+```
+
+Only phrases that merge need a line. Write `{}` when none do: `zoom.py` (SKILL.md step 12) reads it either way.
+
 ## 2. Check what the user already has
 
 Look at the skills available to you in this session (your skill list). When a recurring pattern is
@@ -43,10 +53,31 @@ reach the digests.
 
 Limit: at most 4 preferences, 2 project instructions, 3 prompts, 3 skills and 3 loops. Pick the strongest by evidence.
 
+## 3b. Zoomed out: route the larger picture
+
+`zoom.json` shows the pieces of work the period went to. The report prints its numbers itself; you only route what
+they show, in `zoomed_out`. Each entry points at one id in `zoom.json` with `ref`, and the route has to fit that
+kind of id, or the renderer drops it:
+
+| What zoom.json shows | `ref` | `route` |
+| --- | --- | --- |
+| A work item with restarts (chats that pick up earlier chats) | `item:<name>` | `project_log`: a project with a short log, so the next chat starts from it |
+| A work item with relays (work started from, or sent to, another tool) | `item:<name>` | `move_step`: move the step to the tool where the work happens |
+| A recurring flow inside chats (4+ steps) | `flow:<chat>` | `chain_skill`: a skill that runs the steps in order |
+| A workflow repeated across work items (a use case serving 2+ work items) | `case:<pattern>` | `workflow_skill`, or `loop` when it also has a loop candidate |
+| A kind made repeatedly with the same shape | `kind:<kind>\|<for>\|<purpose>` | `template_or_skill` |
+
+The top use cases fold into this section: the report lists them under "Zoomed out" with the number of work items
+each served, so a use case that serves several work items is the workflow to route. At most 5 entries; pick by the
+counts in `zoom.json`. Skip a route that repeats a skill or loop already under `reusable` or `loops`: point at it in
+the text instead. Never write a number in a route's title or text: the report drops such a route, and shows the
+counts from `zoom.json` next to it.
+
 ## 4. Schema
 
 ```json
 {
+  "language": "en|nl: the report language; numbers on both pages follow it (1,180 or 1.180)",
   "period": {"label": "Last 30 days", "from": "2026-10-17", "to": "2026-11-16", "source": "claude.ai"},
   "at_a_glance": {
     "working": "2-3 sentences, coaching tone, no numbers",
@@ -90,6 +121,7 @@ Limit: at most 4 preferences, 2 project instructions, 3 prompts, 3 skills and 3 
     "existing": [{"name": "", "where": "one of the runs_in values", "what": "", "chats": ["ids"], "suggestion": ""}],
     "not_yet": [{"pattern": "", "why": "what is missing before it can run on its own"}]
   },
+  "zoomed_out": [{"ref": "an id from zoom.json", "route": "project_log|move_step|chain_skill|workflow_skill|loop|template_or_skill", "title": "", "text": "1-2 sentences, no numbers"}],
   "context_pack": "Plain text profile, 6-10 lines, only facts the user stated about themselves and their work",
   "trends": "With previous.json: compare with its block in 2-4 sentences (see 'Since last time' below). Without it: say in one sentence that there is no comparison this time, without asking for anything.",
   "coverage": ["What the data does and doesn't cover, incl. the tier message from prepare.json, personal/mixed/test/empty counts, and that quotes were checked. Not the note on older chats used for loop history: the renderer writes it."]
@@ -105,9 +137,10 @@ ago.", and a line when the periods overlap by more than half or the gap is long 
 - Compare with exactly the figures in `previous.json → block.figures`, not with your own recollection.
 - **Counted or labelled.** The figures the scripts count (`chats`, `active_days`, `user_messages`, `edited_pct`,
   `long_chats`, `feature_use_pct`) can be compared as they are. The ones that rest on the labels you give
-  (`time_share_pct` per kind of work, `work_chats_analysed`) shift from reading alone: the same export, read twice, can
+  (`time_share_pct` per kind of work, `work_chats_analysed`, `made_by_kind`) shift from reading alone: the same export, read twice, can
   move a time share by several points. Mention a change in a time share only at 10 points or more, and in
-  `work_chats_analysed` only at 10% or more; never make either the headline.
+  `work_chats_analysed` or a kind in `made_by_kind` only at 10% or more; never make any of them the headline. An
+  older block has no `made_by_kind`: then say nothing about what was made.
 - **Overlap** (`overlap: true`): most of the chats are the same ones, so compare lightly. Say what is new rather
   than what changed.
 - **A long gap** (`long_gap: true`): the habits may simply have moved on; don't read every difference as progress.
@@ -129,5 +162,7 @@ ago.", and a line when the periods overlap by more than half or the gap is long 
   text off, since its counts come from the scripts only.
 - Loops: the numbers on a loop card (how often, which rhythm, which weekday) come from `loops.json`.
   Don't repeat or round them in your own texts; describe what the loop does.
+- Work item names go in `zoomed_out` and nowhere the Wrapped reads (titles of friction, skills, loops, patterns):
+  the Wrapped and the summary block never carry them.
 - The context pack holds work facts only: role, ongoing work, tools, working style. No health, money, family, relationships, politics or religion, even if stated.
 - Write in the report language (see SKILL.md). Keep it short; the page does the rest.

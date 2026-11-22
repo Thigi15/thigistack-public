@@ -72,7 +72,7 @@ run recognises the reminder's own chats by it and leaves them out. The rest is i
 >    `conversations-000.zip`.
 > 2. Start a new chat, upload `conversations-000.zip`, and ask for my AI usage insights. Nothing else is needed.
 
-## Not supported yet in v0.4
+## Not supported yet
 
 - **ChatGPT** (Settings → Data controls → Export data): planned next.
 - **Gemini** (Google Takeout → My Activity → Gemini Apps): planned.
